@@ -1,15 +1,14 @@
 import streamlit as st
 import pandas as pd
-import requests
-import uuid
 import os
+import uuid
+import requests
 
 from gsheets import (
     get_products,
     add_product,
     delete_product,
     get_orders,
-    add_order,
     delete_order
 )
 
@@ -18,19 +17,20 @@ from gsheets import (
 # =====================================================
 
 st.set_page_config(
-    page_title="Admin CRM Dashboard",
+    page_title="Admin Dashboard",
     layout="wide"
 )
 
 # =====================================================
-# WHATSAPP CONFIG
+# STREAMLIT SECRETS
 # =====================================================
 
-ACCESS_TOKEN = st.secrets["ACCESS_TOKEN"]
-PHONE_NUMBER_ID = st.secrets["PHONE_NUMBER_ID"]
+ACCESS_TOKEN = st.secrets.get("ACCESS_TOKEN", "")
+PHONE_NUMBER_ID = st.secrets.get("PHONE_NUMBER_ID", "")
+SHEET_ID = st.secrets.get("SHEET_ID", "")
 
 # =====================================================
-# IMAGE FOLDER
+# PATHS
 # =====================================================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -50,29 +50,34 @@ products_df = get_products()
 orders_df = get_orders()
 
 # =====================================================
-# CLEAN PHONE
+# TITLE
+# =====================================================
+
+st.title("📦 Admin CRM Dashboard")
+
+# =====================================================
+# PHONE CLEANER
 # =====================================================
 
 def clean_phone(phone):
 
-    if pd.isna(phone):
-        return ""
-
     phone = str(phone)
 
-    phone = phone.replace(".0", "")
+    phone = phone.split(".")[0]
 
     phone = phone.replace("+", "")
 
     phone = phone.replace(" ", "")
 
-    return phone.strip()
+    return phone
 
 # =====================================================
-# SEND WHATSAPP
+# WHATSAPP FUNCTION
 # =====================================================
 
 def send_whatsapp(phone, message):
+
+    phone = clean_phone(phone)
 
     url = f"https://graph.facebook.com/v20.0/{PHONE_NUMBER_ID}/messages"
 
@@ -99,10 +104,8 @@ def send_whatsapp(phone, message):
     return response.json()
 
 # =====================================================
-# TITLE
+# TABS
 # =====================================================
-
-st.title("📦 Admin CRM Dashboard")
 
 tab1, tab2, tab3 = st.tabs([
     "📦 Products",
@@ -111,7 +114,7 @@ tab1, tab2, tab3 = st.tabs([
 ])
 
 # =====================================================
-# TAB 1 - PRODUCTS
+# TAB 1 — PRODUCTS
 # =====================================================
 
 with tab1:
@@ -127,50 +130,49 @@ with tab1:
         "Product Name"
     )
 
-    product_price = st.number_input(
+    price = st.number_input(
         "Price",
-        min_value=1
+        min_value=1,
+        step=1
     )
-
-    # =================================================
-    # ADD PRODUCT
-    # =================================================
 
     if st.button("➕ Add Product"):
 
-        if uploaded_image and product_name:
+        if not uploaded_image:
 
-            product_id = f"P{str(uuid.uuid4())[:6]}"
+            st.warning("Please upload image")
 
-            image_filename = (
-                f"{product_id}_{uploaded_image.name}"
-            )
+            st.stop()
 
-            image_path = os.path.join(
-                PRODUCT_FOLDER,
-                image_filename
-            )
+        if not product_name:
 
-            with open(image_path, "wb") as f:
+            st.warning("Please enter product name")
 
-                f.write(uploaded_image.getbuffer())
+            st.stop()
 
-            add_product([
-                product_id,
-                product_name,
-                product_price,
-                image_filename
-            ])
+        product_id = f"P{str(uuid.uuid4())[:5]}"
 
-            st.success("✅ Product Added")
+        image_filename = f"{product_id}_{uploaded_image.name}"
 
-            st.rerun()
+        image_path = os.path.join(
+            PRODUCT_FOLDER,
+            image_filename
+        )
 
-        else:
+        with open(image_path, "wb") as f:
 
-            st.warning(
-                "Please upload image and enter product name."
-            )
+            f.write(uploaded_image.getbuffer())
+
+        add_product([
+            product_id,
+            product_name,
+            price,
+            image_filename
+        ])
+
+        st.success("✅ Product Added")
+
+        st.rerun()
 
     st.markdown("---")
 
@@ -178,39 +180,66 @@ with tab1:
 
     if not products_df.empty:
 
-        for i, row in products_df.iterrows():
+        for idx, row in products_df.iterrows():
 
-            col1, col2, col3 = st.columns([3,2,1])
+            st.markdown("---")
 
+            col1, col2, col3 = st.columns([1, 2, 1])
+
+            # IMAGE
             with col1:
 
-                st.write(
-                    f"{row['product_id']} | {row['product_name']} | ₹{row['price']}"
+                image_path = os.path.join(
+                    PRODUCT_FOLDER,
+                    str(row["image"])
                 )
 
+                if os.path.exists(image_path):
+
+                    st.image(
+                        image_path,
+                        width=180
+                    )
+
+            # DETAILS
             with col2:
 
-                st.write(row["image"])
+                st.subheader(
+                    str(row["product_name"])
+                )
 
+                st.write(
+                    f"Product ID: {row['product_id']}"
+                )
+
+                st.write(
+                    f"Price: ₹{row['price']}"
+                )
+
+            # DELETE
             with col3:
 
+                st.write("")
+
+                st.write("")
+
                 if st.button(
-                    "❌ Delete",
-                    key=f"del_product_{i}"
+                    "❌ Delete Product",
+                    key=f"delete_product_{idx}"
                 ):
 
-                    delete_product(i + 2)
+                    delete_product(idx + 2)
 
-                    st.warning("Product Deleted")
+                    st.success("Product Deleted")
 
                     st.rerun()
 
     else:
 
-        st.info("No products available.")
+        st.warning("No products found")
 
 # =====================================================
-# TAB 2 - ORDERS
+# TAB 2 — ORDERS
 # =====================================================
 
 with tab2:
@@ -219,48 +248,74 @@ with tab2:
 
     if not orders_df.empty:
 
-        orders_df["customer_number"] = (
-            orders_df["customer_number"]
-            .astype(str)
-            .apply(clean_phone)
-        )
+        grouped_orders = orders_df.groupby("order_id")
 
-        st.dataframe(
-            orders_df,
-            use_container_width=True
-        )
+        total_sales = 0
+
+        for order_id, group in grouped_orders:
+
+            st.markdown("---")
+
+            first_row = group.iloc[0]
+
+            customer_name = first_row["customer_name"]
+
+            customer_number = clean_phone(
+                first_row["customer_number"]
+            )
+
+            st.subheader(
+                f"Order ID: {order_id}"
+            )
+
+            st.write(
+                f"Customer: {customer_name}"
+            )
+
+            st.write(
+                f"WhatsApp: {customer_number}"
+            )
+
+            st.dataframe(
+                group,
+                use_container_width=True
+            )
+
+            grand_total = pd.to_numeric(
+                group["total"],
+                errors="coerce"
+            ).sum()
+
+            total_sales += grand_total
+
+            st.success(
+                f"Order Total: ₹{grand_total}"
+            )
+
+            if st.button(
+                "❌ Delete Order",
+                key=f"delete_order_{order_id}"
+            ):
+
+                rows_to_delete = []
+
+                for idx2, row2 in orders_df.iterrows():
+
+                    if row2["order_id"] == order_id:
+
+                        rows_to_delete.append(idx2 + 2)
+
+                rows_to_delete.reverse()
+
+                for r in rows_to_delete:
+
+                    delete_order(r)
+
+                st.success("Order Deleted")
+
+                st.rerun()
 
         st.markdown("---")
-
-        st.subheader("❌ Remove Bogus Orders")
-
-        for i, row in orders_df.iterrows():
-
-            col1, col2 = st.columns([4,1])
-
-            with col1:
-
-                st.write(
-                    f"{row['order_id']} | {row['customer_name']} | ₹{row['total']}"
-                )
-
-            with col2:
-
-                if st.button(
-                    "Delete",
-                    key=f"delete_order_{i}"
-                ):
-
-                    delete_order(i + 2)
-
-                    st.warning("Order Deleted")
-
-                    st.rerun()
-
-        total_sales = pd.to_numeric(
-            orders_df["total"],
-            errors="coerce"
-        ).sum()
 
         st.success(
             f"💰 Total Sales: ₹{total_sales}"
@@ -268,97 +323,173 @@ with tab2:
 
     else:
 
-        st.warning("No orders found.")
+        st.warning("No orders found")
 
 # =====================================================
-# TAB 3 - WHATSAPP
+# TAB 3 — WHATSAPP
 # =====================================================
 
 with tab3:
 
-    st.header("📲 WhatsApp Message Sending")
+    st.header("📲 WhatsApp Sending Panel")
 
     if not orders_df.empty:
 
-        orders_df["customer_number"] = (
-            orders_df["customer_number"]
-            .astype(str)
-            .apply(clean_phone)
-        )
+        grouped_orders = orders_df.groupby("order_id")
 
-        for i, row in orders_df.iterrows():
+        for order_id, group in grouped_orders:
 
-            message = f"""
-Hi {row['customer_name']},
+            first_row = group.iloc[0]
 
-✅ Your order is confirmed.
+            customer_name = first_row["customer_name"]
 
-🆔 Order ID: {row['order_id']}
-📦 Product: {row['product_name']}
-🔢 Qty: {row['qty']}
-💰 Total: ₹{row['total']}
+            customer_number = clean_phone(
+                first_row["customer_number"]
+            )
 
-Thank you for shopping with us.
-"""
+            lines = []
 
-            col1, col2 = st.columns([4,1])
+            lines.append(
+                f"Hello {customer_name},"
+            )
 
-            with col1:
+            lines.append("")
 
-                st.write(
-                    f"{row['customer_name']} | {row['customer_number']}"
+            lines.append(
+                "Your order details:"
+            )
+
+            grand_total = 0
+
+            for _, item in group.iterrows():
+
+                qty = item["qty"]
+
+                pname = item["product_name"]
+
+                total = float(item["total"])
+
+                grand_total += total
+
+                lines.append(
+                    f"• {pname} x {qty} = ₹{total}"
                 )
 
-            with col2:
+            lines.append("")
 
-                if st.button(
-                    "Send",
-                    key=f"send_msg_{i}"
-                ):
+            lines.append(
+                f"Total Amount: ₹{grand_total}"
+            )
 
-                    phone = clean_phone(
-                        row["customer_number"]
-                    )
+            lines.append("")
 
-                    result = send_whatsapp(
-                        phone,
-                        message
-                    )
+            lines.append(
+                "Thank you for your order 🙏"
+            )
 
-                    st.write(result)
+            message = "\n".join(lines)
 
-        # =============================================
-        # SEND ALL
-        # =============================================
+            st.markdown("---")
 
-        if st.button("🚀 Send All Messages"):
+            st.subheader(
+                f"{customer_name} ({customer_number})"
+            )
 
-            for _, row in orders_df.iterrows():
+            st.code(message)
 
-                phone = clean_phone(
-                    row["customer_number"]
-                )
+            if st.button(
+                "📲 Send WhatsApp",
+                key=f"send_{order_id}"
+            ):
 
-                message = f"""
-Hi {row['customer_name']},
-
-✅ Your order is confirmed.
-
-🆔 Order ID: {row['order_id']}
-📦 Product: {row['product_name']}
-🔢 Qty: {row['qty']}
-💰 Total: ₹{row['total']}
-
-Thank you for shopping with us.
-"""
-
-                send_whatsapp(
-                    phone,
+                result = send_whatsapp(
+                    customer_number,
                     message
                 )
 
-            st.success("✅ All Messages Sent")
+                if "messages" in result:
+
+                    st.success(
+                        "WhatsApp Sent Successfully"
+                    )
+
+                else:
+
+                    st.error(result)
+
+        st.markdown("---")
+
+        if st.button(
+            "🚀 Send WhatsApp To All Customers"
+        ):
+
+            sent_count = 0
+
+            for order_id, group in grouped_orders:
+
+                first_row = group.iloc[0]
+
+                customer_name = first_row["customer_name"]
+
+                customer_number = clean_phone(
+                    first_row["customer_number"]
+                )
+
+                lines = []
+
+                lines.append(
+                    f"Hello {customer_name},"
+                )
+
+                lines.append("")
+
+                lines.append(
+                    "Your order details:"
+                )
+
+                grand_total = 0
+
+                for _, item in group.iterrows():
+
+                    qty = item["qty"]
+
+                    pname = item["product_name"]
+
+                    total = float(item["total"])
+
+                    grand_total += total
+
+                    lines.append(
+                        f"• {pname} x {qty} = ₹{total}"
+                    )
+
+                lines.append("")
+
+                lines.append(
+                    f"Total Amount: ₹{grand_total}"
+                )
+
+                lines.append("")
+
+                lines.append(
+                    "Thank you for your order 🙏"
+                )
+
+                message = "\n".join(lines)
+
+                result = send_whatsapp(
+                    customer_number,
+                    message
+                )
+
+                if "messages" in result:
+
+                    sent_count += 1
+
+            st.success(
+                f"✅ WhatsApp sent to {sent_count} customers"
+            )
 
     else:
 
-        st.warning("No orders available.")
+        st.warning("No orders found")
