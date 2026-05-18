@@ -1,71 +1,75 @@
 import streamlit as st
 import pandas as pd
-import os
 import requests
 import uuid
+import os
+
+from gsheets import (
+    get_products,
+    add_product,
+    delete_product,
+    get_orders,
+    add_order,
+    delete_order
+)
 
 # =====================================================
-# CONFIG
+# PAGE CONFIG
 # =====================================================
 
-st.set_page_config(page_title="Admin Dashboard", layout="wide")
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-PRODUCT_FOLDER = os.path.join(BASE_DIR, "product_images")
-DB_FOLDER = os.path.join(BASE_DIR, "database")
-
-PRODUCT_DB = os.path.join(DB_FOLDER, "products.csv")
-ORDER_DB = os.path.join(DB_FOLDER, "orders.csv")
-
-os.makedirs(PRODUCT_FOLDER, exist_ok=True)
-os.makedirs(DB_FOLDER, exist_ok=True)
+st.set_page_config(
+    page_title="Admin CRM Dashboard",
+    layout="wide"
+)
 
 # =====================================================
 # WHATSAPP CONFIG
 # =====================================================
 
-ACCESS_TOKEN = "YOUR_ACCESS_TOKEN"
-PHONE_NUMBER_ID = "1057145457490182"
+ACCESS_TOKEN = st.secrets["ACCESS_TOKEN"]
+PHONE_NUMBER_ID = st.secrets["PHONE_NUMBER_ID"]
 
 # =====================================================
-# INIT FILES
+# IMAGE FOLDER
 # =====================================================
 
-if not os.path.exists(PRODUCT_DB):
-    pd.DataFrame(columns=["product_id", "product_name", "price", "image"]).to_csv(PRODUCT_DB, index=False)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-if not os.path.exists(ORDER_DB):
-    pd.DataFrame(columns=[
-        "order_id",
-        "customer_name",
-        "customer_number",
-        "product_id",
-        "product_name",
-        "qty",
-        "price",
-        "total"
-    ]).to_csv(ORDER_DB, index=False)
+PRODUCT_FOLDER = os.path.join(
+    BASE_DIR,
+    "product_images"
+)
+
+os.makedirs(PRODUCT_FOLDER, exist_ok=True)
 
 # =====================================================
 # LOAD DATA
 # =====================================================
 
-products_df = pd.read_csv(PRODUCT_DB, dtype=str)
-orders_df = pd.read_csv(ORDER_DB, dtype=str)
+products_df = get_products()
+orders_df = get_orders()
 
 # =====================================================
 # CLEAN PHONE
 # =====================================================
 
 def clean_phone(phone):
+
     if pd.isna(phone):
         return ""
-    phone = str(phone).split(".")[0]
-    return phone.replace("+", "").replace(" ", "")
+
+    phone = str(phone)
+
+    phone = phone.replace(".0", "")
+
+    phone = phone.replace("+", "")
+
+    phone = phone.replace(" ", "")
+
+    return phone.strip()
 
 # =====================================================
-# WHATSAPP SEND
+# SEND WHATSAPP
 # =====================================================
 
 def send_whatsapp(phone, message):
@@ -81,81 +85,132 @@ def send_whatsapp(phone, message):
         "messaging_product": "whatsapp",
         "to": phone,
         "type": "text",
-        "text": {"body": message}
+        "text": {
+            "body": message
+        }
     }
 
-    return requests.post(url, headers=headers, json=payload).json()
+    response = requests.post(
+        url,
+        headers=headers,
+        json=payload
+    )
+
+    return response.json()
 
 # =====================================================
 # TITLE
 # =====================================================
 
-st.title("📦 Admin CRM Dashboard (Full Control)")
+st.title("📦 Admin CRM Dashboard")
 
-tab1, tab2, tab3 = st.tabs(["📦 Products", "🛒 Orders", "📲 WhatsApp"])
+tab1, tab2, tab3 = st.tabs([
+    "📦 Products",
+    "🛒 Orders",
+    "📲 WhatsApp"
+])
 
 # =====================================================
-# TAB 1 - PRODUCTS (ADD + DELETE)
+# TAB 1 - PRODUCTS
 # =====================================================
 
 with tab1:
 
     st.header("📦 Product Management")
 
+    uploaded_image = st.file_uploader(
+        "Upload Product Image",
+        type=["jpg", "jpeg", "png"]
+    )
+
+    product_name = st.text_input(
+        "Product Name"
+    )
+
+    product_price = st.number_input(
+        "Price",
+        min_value=1
+    )
+
+    # =================================================
     # ADD PRODUCT
-    uploaded_image = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"])
-    product_name = st.text_input("Product Name")
-    price = st.number_input("Price", min_value=1)
+    # =================================================
 
     if st.button("➕ Add Product"):
 
         if uploaded_image and product_name:
 
-            product_id = f"P{str(len(products_df)+1).zfill(3)}"
+            product_id = f"P{str(uuid.uuid4())[:6]}"
 
-            image_name = f"{product_id}_{uploaded_image.name}"
-            image_path = os.path.join(PRODUCT_FOLDER, image_name)
+            image_filename = (
+                f"{product_id}_{uploaded_image.name}"
+            )
+
+            image_path = os.path.join(
+                PRODUCT_FOLDER,
+                image_filename
+            )
 
             with open(image_path, "wb") as f:
+
                 f.write(uploaded_image.getbuffer())
 
-            new_row = pd.DataFrame([{
-                "product_id": product_id,
-                "product_name": product_name,
-                "price": price,
-                "image": image_name
-            }])
+            add_product([
+                product_id,
+                product_name,
+                product_price,
+                image_filename
+            ])
 
-            products_df = pd.concat([products_df, new_row], ignore_index=True)
-            products_df.to_csv(PRODUCT_DB, index=False)
+            st.success("✅ Product Added")
 
-            st.success("Product Added")
             st.rerun()
 
+        else:
+
+            st.warning(
+                "Please upload image and enter product name."
+            )
+
     st.markdown("---")
+
     st.subheader("📦 Current Products")
 
-    for i, row in products_df.iterrows():
+    if not products_df.empty:
 
-        col1, col2, col3 = st.columns([3,2,1])
+        for i, row in products_df.iterrows():
 
-        with col1:
-            st.write(f"{row['product_id']} - {row['product_name']} - ₹{row['price']}")
+            col1, col2, col3 = st.columns([3,2,1])
 
-        with col2:
-            st.write(row["image"])
+            with col1:
 
-        with col3:
-            if st.button("❌ Delete", key=f"delp_{i}"):
+                st.write(
+                    f"{row['product_id']} | {row['product_name']} | ₹{row['price']}"
+                )
 
-                products_df = products_df.drop(i).reset_index(drop=True)
-                products_df.to_csv(PRODUCT_DB, index=False)
+            with col2:
 
-                st.warning("Product Deleted")
-                st.rerun()
+                st.write(row["image"])
+
+            with col3:
+
+                if st.button(
+                    "❌ Delete",
+                    key=f"del_product_{i}"
+                ):
+
+                    delete_product(i + 2)
+
+                    st.warning("Product Deleted")
+
+                    st.rerun()
+
+    else:
+
+        st.info("No products available.")
 
 # =====================================================
-# TAB 2 - ORDERS (DELETE SUPPORT)
+# TAB 2 - ORDERS
 # =====================================================
 
 with tab2:
@@ -164,9 +219,16 @@ with tab2:
 
     if not orders_df.empty:
 
-        orders_df["customer_number"] = orders_df["customer_number"].apply(clean_phone)
+        orders_df["customer_number"] = (
+            orders_df["customer_number"]
+            .astype(str)
+            .apply(clean_phone)
+        )
 
-        st.dataframe(orders_df, use_container_width=True)
+        st.dataframe(
+            orders_df,
+            use_container_width=True
+        )
 
         st.markdown("---")
 
@@ -177,22 +239,36 @@ with tab2:
             col1, col2 = st.columns([4,1])
 
             with col1:
-                st.write(f"{row['order_id']} | {row['customer_name']} | ₹{row['total']}")
+
+                st.write(
+                    f"{row['order_id']} | {row['customer_name']} | ₹{row['total']}"
+                )
 
             with col2:
-                if st.button("Delete", key=f"del_o_{i}"):
 
-                    orders_df = orders_df.drop(i).reset_index(drop=True)
-                    orders_df.to_csv(ORDER_DB, index=False)
+                if st.button(
+                    "Delete",
+                    key=f"delete_order_{i}"
+                ):
+
+                    delete_order(i + 2)
 
                     st.warning("Order Deleted")
+
                     st.rerun()
 
-        total_sales = pd.to_numeric(orders_df["total"], errors="coerce").sum()
-        st.success(f"💰 Total Sales: ₹{total_sales}")
+        total_sales = pd.to_numeric(
+            orders_df["total"],
+            errors="coerce"
+        ).sum()
+
+        st.success(
+            f"💰 Total Sales: ₹{total_sales}"
+        )
 
     else:
-        st.warning("No orders found")
+
+        st.warning("No orders found.")
 
 # =====================================================
 # TAB 3 - WHATSAPP
@@ -200,54 +276,89 @@ with tab2:
 
 with tab3:
 
-    st.header("📲 WhatsApp Sending Panel")
+    st.header("📲 WhatsApp Message Sending")
 
     if not orders_df.empty:
 
-        orders_df["customer_number"] = orders_df["customer_number"].apply(clean_phone)
+        orders_df["customer_number"] = (
+            orders_df["customer_number"]
+            .astype(str)
+            .apply(clean_phone)
+        )
 
         for i, row in orders_df.iterrows():
 
-            msg = f"""
+            message = f"""
 Hi {row['customer_name']},
 
-Order Confirmed
-ID: {row['order_id']}
-Product: {row['product_name']}
-Qty: {row['qty']}
-Total: ₹{row['total']}
+✅ Your order is confirmed.
+
+🆔 Order ID: {row['order_id']}
+📦 Product: {row['product_name']}
+🔢 Qty: {row['qty']}
+💰 Total: ₹{row['total']}
+
+Thank you for shopping with us.
 """
 
             col1, col2 = st.columns([4,1])
 
             with col1:
-                st.write(f"{row['customer_name']} - {row['customer_number']}")
+
+                st.write(
+                    f"{row['customer_name']} | {row['customer_number']}"
+                )
 
             with col2:
-                if st.button("Send", key=f"send_{i}"):
 
-                    phone = clean_phone(row["customer_number"])
-                    res = send_whatsapp(phone, msg)
-                    st.write(res)
+                if st.button(
+                    "Send",
+                    key=f"send_msg_{i}"
+                ):
 
-        if st.button("🚀 Send All"):
+                    phone = clean_phone(
+                        row["customer_number"]
+                    )
+
+                    result = send_whatsapp(
+                        phone,
+                        message
+                    )
+
+                    st.write(result)
+
+        # =============================================
+        # SEND ALL
+        # =============================================
+
+        if st.button("🚀 Send All Messages"):
 
             for _, row in orders_df.iterrows():
 
-                msg = f"""
+                phone = clean_phone(
+                    row["customer_number"]
+                )
+
+                message = f"""
 Hi {row['customer_name']},
 
-Order Confirmed
-ID: {row['order_id']}
-Product: {row['product_name']}
-Qty: {row['qty']}
-Total: ₹{row['total']}
+✅ Your order is confirmed.
+
+🆔 Order ID: {row['order_id']}
+📦 Product: {row['product_name']}
+🔢 Qty: {row['qty']}
+💰 Total: ₹{row['total']}
+
+Thank you for shopping with us.
 """
 
-                phone = clean_phone(row["customer_number"])
-                send_whatsapp(phone, msg)
+                send_whatsapp(
+                    phone,
+                    message
+                )
 
-            st.success("All messages sent")
+            st.success("✅ All Messages Sent")
 
     else:
-        st.warning("No orders found")
+
+        st.warning("No orders available.")
