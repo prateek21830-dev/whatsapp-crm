@@ -1,11 +1,9 @@
 import streamlit as st
 import pandas as pd
-import os
 import uuid
 
 from gsheets import (
     get_products,
-    get_orders,
     add_order
 )
 
@@ -14,22 +12,9 @@ from gsheets import (
 # =====================================================
 
 st.set_page_config(
-    page_title="Product Catalog",
+    page_title="Customer Dashboard",
     layout="wide"
 )
-
-# =====================================================
-# IMAGE FOLDER
-# =====================================================
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-PRODUCT_FOLDER = os.path.join(
-    BASE_DIR,
-    "product_images"
-)
-
-os.makedirs(PRODUCT_FOLDER, exist_ok=True)
 
 # =====================================================
 # LOAD PRODUCTS
@@ -41,60 +26,21 @@ products_df = get_products()
 # TITLE
 # =====================================================
 
-st.title("🛍 Product Catalog")
-
-st.markdown(
-    "Select products and place your order."
-)
-
-# =====================================================
-# NO PRODUCTS
-# =====================================================
-
-if products_df.empty:
-
-    st.warning(
-        "No products available."
-    )
-
-    st.stop()
+st.title("🛍️ Customer Dashboard")
 
 # =====================================================
 # CUSTOMER DETAILS
 # =====================================================
 
-st.markdown("---")
+st.header("👤 Customer Details")
 
-col1, col2 = st.columns(2)
+customer_name = st.text_input(
+    "Customer Name"
+)
 
-with col1:
-
-    customer_name = st.text_input(
-        "Customer Name"
-    )
-
-with col2:
-
-    customer_number = st.text_input(
-        "WhatsApp Number",
-        placeholder="919876543210"
-    )
-
-# =====================================================
-# CLEAN PHONE
-# =====================================================
-
-def clean_phone(phone):
-
-    phone = str(phone)
-
-    phone = phone.replace(".0", "")
-
-    phone = phone.replace("+", "")
-
-    phone = phone.replace(" ", "")
-
-    return phone.strip()
+customer_number = st.text_input(
+    "WhatsApp Number"
+)
 
 # =====================================================
 # PRODUCT CATALOG
@@ -106,75 +52,104 @@ st.header("📦 Products")
 
 cart = []
 
-for idx, row in products_df.iterrows():
+if not products_df.empty:
 
-    st.markdown("---")
+    for idx, row in products_df.iterrows():
 
-    col1, col2 = st.columns([1,2])
+        st.markdown("---")
 
-    # =================================================
-    # IMAGE
-    # =================================================
+        col1, col2 = st.columns([1, 2])
 
-    with col1:
+        # =================================================
+        # IMAGE
+        # =================================================
 
-        image_path = os.path.join(
-            PRODUCT_FOLDER,
-            str(row["image"])
-        )
+        with col1:
 
-        if os.path.exists(image_path):
+            image_url = row.get("image", "")
 
-            st.image(
-                image_path,
-                width=220
+            if image_url:
+
+                st.image(
+                    image_url,
+                    width=220
+                )
+
+            else:
+
+                st.warning("No image available")
+
+        # =================================================
+        # DETAILS
+        # =================================================
+
+        with col2:
+
+            st.subheader(
+                str(
+                    row.get(
+                        "product_name",
+                        "No Name"
+                    )
+                )
             )
 
-    # =================================================
-    # DETAILS
-    # =================================================
+            st.write(
+                f"Product ID: {row.get('product_id', 'N/A')}"
+            )
 
-    with col2:
+            st.write(
+                f"Price: ₹{row.get('price', 0)}"
+            )
 
-        st.subheader(
-            str(row["product_name"])
-        )
+            qty = st.number_input(
+                f"Quantity - {row.get('product_id', idx)}",
+                min_value=0,
+                step=1,
+                key=f"qty_{idx}"
+            )
 
-        st.write(
-            f"Code: {row['product_id']}"
-        )
+            if qty > 0:
 
-        st.markdown(
-            f"## ₹{row['price']}"
-        )
+                total = qty * float(
+                    row.get("price", 0)
+                )
 
-        qty = st.selectbox(
-            f"Select Quantity - {row['product_id']}",
-            [0,1,2,5,10,20],
-            key=f"qty_{row['product_id']}"
-        )
+                cart.append({
 
-        if qty > 0:
+                    "product_id": row.get(
+                        "product_id",
+                        ""
+                    ),
 
-            total = qty * float(row["price"])
+                    "product_name": row.get(
+                        "product_name",
+                        ""
+                    ),
 
-            cart.append({
-                "product_id": row["product_id"],
-                "product_name": row["product_name"],
-                "qty": qty,
-                "price": row["price"],
-                "total": total
-            })
+                    "price": row.get(
+                        "price",
+                        0
+                    ),
+
+                    "qty": qty,
+
+                    "total": total
+                })
+
+else:
+
+    st.warning("No products available")
 
 # =====================================================
-# ORDER SUMMARY
+# CART SUMMARY
 # =====================================================
 
 st.markdown("---")
 
-st.header("🛒 Order Summary")
+st.header("🛒 Cart Summary")
 
-if cart:
+if len(cart) > 0:
 
     cart_df = pd.DataFrame(cart)
 
@@ -185,71 +160,79 @@ if cart:
 
     grand_total = cart_df["total"].sum()
 
-    st.success(
+    st.subheader(
         f"Grand Total: ₹{grand_total}"
     )
 
-    # =================================================
-    # PLACE ORDER
-    # =================================================
-
-    if st.button("🚀 Place Order"):
-
-        if not customer_name:
-
-            st.warning(
-                "Please enter customer name."
-            )
-
-            st.stop()
-
-        if not customer_number:
-
-            st.warning(
-                "Please enter WhatsApp number."
-            )
-
-            st.stop()
-
-        customer_number = clean_phone(
-            customer_number
-        )
-
-        order_id = str(uuid.uuid4())[:8]
-
-        # =============================================
-        # SAVE EACH ITEM
-        # =============================================
-
-        for item in cart:
-
-            add_order([
-                order_id,
-                customer_name,
-                customer_number,
-                item["product_id"],
-                item["product_name"],
-                item["qty"],
-                item["price"],
-                item["total"]
-            ])
-
-        st.balloons()
-
-        st.success(
-            "✅ Order Placed Successfully"
-        )
-
-        st.markdown(
-            f"""
-### Order ID: `{order_id}`
-
-Our team will contact you shortly on WhatsApp.
-"""
-        )
-
 else:
 
-    st.info(
-        "Select products to create order."
+    st.info("Cart is empty")
+
+# =====================================================
+# PLACE ORDER
+# =====================================================
+
+st.markdown("---")
+
+if st.button("✅ Place Order"):
+
+    if customer_name == "":
+
+        st.warning(
+            "Enter customer name"
+        )
+
+        st.stop()
+
+    if customer_number == "":
+
+        st.warning(
+            "Enter WhatsApp number"
+        )
+
+        st.stop()
+
+    if len(cart) == 0:
+
+        st.warning(
+            "Select at least one product"
+        )
+
+        st.stop()
+
+    # =================================================
+    # CREATE ORDER ID
+    # =================================================
+
+    order_id = f"O{str(uuid.uuid4())[:6]}"
+
+    # =================================================
+    # SAVE ORDER
+    # =================================================
+
+    for item in cart:
+
+        add_order([
+
+            order_id,
+
+            customer_name,
+
+            customer_number,
+
+            item["product_id"],
+
+            item["product_name"],
+
+            item["price"],
+
+            item["qty"],
+
+            item["total"]
+        ])
+
+    st.success(
+        f"✅ Order placed successfully. Order ID: {order_id}"
     )
+
+    st.balloons()
