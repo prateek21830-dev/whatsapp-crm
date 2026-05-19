@@ -25,8 +25,8 @@ st.set_page_config(
 # SECRETS
 # =====================================================
 
-ACCESS_TOKEN = st.secrets["ACCESS_TOKEN"]
-PHONE_NUMBER_ID = st.secrets["PHONE_NUMBER_ID"]
+ACCESS_TOKEN = st.secrets.get("ACCESS_TOKEN", "")
+PHONE_NUMBER_ID = st.secrets.get("PHONE_NUMBER_ID", "")
 
 # =====================================================
 # PATHS
@@ -59,6 +59,12 @@ st.title("📦 Admin Dashboard")
 # =====================================================
 
 def send_whatsapp(phone, message):
+
+    if ACCESS_TOKEN == "" or PHONE_NUMBER_ID == "":
+
+        return {
+            "error": "ACCESS_TOKEN or PHONE_NUMBER_ID missing in Streamlit secrets"
+        }
 
     phone = str(phone)
 
@@ -141,7 +147,7 @@ if st.button("➕ Add Product"):
 
         f.write(uploaded_image.getbuffer())
 
-    # SAVE TO SHEET
+    # SAVE TO GOOGLE SHEETS
     add_product([
         product_id,
         product_name,
@@ -169,12 +175,17 @@ if not products_df.empty:
 
         col1, col2, col3 = st.columns([1, 2, 1])
 
+        # =================================================
         # IMAGE
+        # =================================================
+
         with col1:
+
+            image_name = row.get("image", "")
 
             image_path = os.path.join(
                 PRODUCT_FOLDER,
-                str(row["image"])
+                str(image_name)
             )
 
             if os.path.exists(image_path):
@@ -188,26 +199,46 @@ if not products_df.empty:
 
                 st.warning("Image missing")
 
+        # =================================================
         # DETAILS
+        # =================================================
+
         with col2:
 
+            product_name_value = row.get(
+                "product_name",
+                "No Name"
+            )
+
+            product_id_value = row.get(
+                "product_id",
+                "N/A"
+            )
+
+            product_price_value = row.get(
+                "price",
+                0
+            )
+
             st.subheader(
-                str(row["product_name"])
+                str(product_name_value)
             )
 
             st.write(
-                f"Product ID: {row['product_id']}"
+                f"Product ID: {product_id_value}"
             )
 
             st.write(
-                f"Price: ₹{row['price']}"
+                f"Price: ₹{product_price_value}"
             )
 
-        # DELETE
+        # =================================================
+        # DELETE PRODUCT
+        # =================================================
+
         with col3:
 
             st.write("")
-
             st.write("")
 
             if st.button(
@@ -243,17 +274,23 @@ if not orders_df.empty:
 
         first_row = group.iloc[0]
 
-        customer_name = first_row["customer_name"]
+        customer_name = first_row.get(
+            "customer_name",
+            "Customer"
+        )
 
         customer_number = str(
-            first_row["customer_number"]
+            first_row.get(
+                "customer_number",
+                ""
+            )
         )
 
         customer_number = customer_number.split(".")[0]
 
-        # =============================================
+        # =================================================
         # BUILD MESSAGE
-        # =============================================
+        # =================================================
 
         lines = []
 
@@ -271,13 +308,25 @@ if not orders_df.empty:
 
         for _, item in group.iterrows():
 
-            qty = item["qty"]
+            qty = item.get("qty", 0)
 
-            pname = item["product_name"]
+            pname = item.get(
+                "product_name",
+                "Item"
+            )
 
-            total = item["total"]
+            total = item.get(
+                "total",
+                0
+            )
 
-            grand_total += float(total)
+            try:
+
+                grand_total += float(total)
+
+            except:
+
+                pass
 
             lines.append(
                 f"• {pname} x {qty} = ₹{total}"
@@ -297,9 +346,9 @@ if not orders_df.empty:
 
         message = "\n".join(lines)
 
-        # =============================================
+        # =================================================
         # DISPLAY
-        # =============================================
+        # =================================================
 
         st.subheader(
             f"Order ID: {order_id}"
@@ -320,9 +369,9 @@ if not orders_df.empty:
 
         col1, col2 = st.columns(2)
 
-        # =============================================
+        # =================================================
         # SEND WHATSAPP
-        # =============================================
+        # =================================================
 
         with col1:
 
@@ -346,9 +395,9 @@ if not orders_df.empty:
 
                     st.error(result)
 
-        # =============================================
+        # =================================================
         # DELETE ORDER
-        # =============================================
+        # =================================================
 
         with col2:
 
@@ -377,6 +426,10 @@ if not orders_df.empty:
 
                 st.rerun()
 
+else:
+
+    st.warning("No orders available")
+
 # =====================================================
 # SEND ALL WHATSAPP
 # =====================================================
@@ -393,10 +446,16 @@ if st.button("🚀 Send WhatsApp To All Customers"):
 
         first_row = group.iloc[0]
 
-        customer_name = first_row["customer_name"]
+        customer_name = first_row.get(
+            "customer_name",
+            "Customer"
+        )
 
         customer_number = str(
-            first_row["customer_number"]
+            first_row.get(
+                "customer_number",
+                ""
+            )
         )
 
         customer_number = customer_number.split(".")[0]
@@ -417,13 +476,25 @@ if st.button("🚀 Send WhatsApp To All Customers"):
 
         for _, item in group.iterrows():
 
-            qty = item["qty"]
+            qty = item.get("qty", 0)
 
-            pname = item["product_name"]
+            pname = item.get(
+                "product_name",
+                "Item"
+            )
 
-            total = item["total"]
+            total = item.get(
+                "total",
+                0
+            )
 
-            grand_total += float(total)
+            try:
+
+                grand_total += float(total)
+
+            except:
+
+                pass
 
             lines.append(
                 f"• {pname} x {qty} = ₹{total}"
