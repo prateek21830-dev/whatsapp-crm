@@ -152,7 +152,7 @@ with tab1:
 
         product_id = f"P{str(uuid.uuid4())[:5]}"
 
-        image_filename = f"{product_id}_{uploaded_image.name}"
+       image_filename = uploaded_image.name
 
         image_path = os.path.join(
             PRODUCT_FOLDER,
