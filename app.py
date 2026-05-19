@@ -28,18 +28,9 @@ st.set_page_config(
 ACCESS_TOKEN = st.secrets.get("ACCESS_TOKEN", "")
 PHONE_NUMBER_ID = st.secrets.get("PHONE_NUMBER_ID", "")
 
-# =====================================================
-# PATHS
-# =====================================================
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-PRODUCT_FOLDER = os.path.join(
-    BASE_DIR,
-    "product_images"
-)
-
-os.makedirs(PRODUCT_FOLDER, exist_ok=True)
+# CLOUDINARY
+CLOUDINARY_CLOUD_NAME = st.secrets.get("CLOUDINARY_CLOUD_NAME", "")
+CLOUDINARY_UPLOAD_PRESET = st.secrets.get("CLOUDINARY_UPLOAD_PRESET", "")
 
 # =====================================================
 # LOAD DATA
@@ -55,6 +46,38 @@ orders_df = get_orders()
 st.title("📦 Admin Dashboard")
 
 # =====================================================
+# CLOUDINARY IMAGE UPLOAD
+# =====================================================
+
+def upload_to_cloudinary(uploaded_file):
+
+    url = f"https://api.cloudinary.com/v1_1/{CLOUDINARY_CLOUD_NAME}/image/upload"
+
+    files = {
+        "file": uploaded_file.getvalue()
+    }
+
+    data = {
+        "upload_preset": CLOUDINARY_UPLOAD_PRESET
+    }
+
+    response = requests.post(
+        url,
+        files=files,
+        data=data
+    )
+
+    result = response.json()
+
+    if "secure_url" in result:
+
+        return result["secure_url"]
+
+    else:
+
+        return None
+
+# =====================================================
 # WHATSAPP FUNCTION
 # =====================================================
 
@@ -63,7 +86,7 @@ def send_whatsapp(phone, message):
     if ACCESS_TOKEN == "" or PHONE_NUMBER_ID == "":
 
         return {
-            "error": "ACCESS_TOKEN or PHONE_NUMBER_ID missing in Streamlit secrets"
+            "error": "ACCESS_TOKEN or PHONE_NUMBER_ID missing"
         }
 
     phone = str(phone)
@@ -136,31 +159,37 @@ if st.button("➕ Add Products"):
 
     for uploaded_image in uploaded_images:
 
+        # ============================================
         # PRODUCT ID
+        # ============================================
+
         product_id = f"P{str(uuid.uuid4())[:5]}"
 
-        # IMAGE NAME
-        image_filename = uploaded_image.name.replace(
-            " ",
-            "_"
+        # ============================================
+        # UPLOAD IMAGE TO CLOUDINARY
+        # ============================================
+
+        image_url = upload_to_cloudinary(
+            uploaded_image
         )
 
-        # SAVE IMAGE
-        image_path = os.path.join(
-            PRODUCT_FOLDER,
-            image_filename
-        )
+        if not image_url:
 
-        with open(image_path, "wb") as f:
+            st.error(
+                f"Failed to upload image: {uploaded_image.name}"
+            )
 
-            f.write(uploaded_image.getbuffer())
+            continue
 
+        # ============================================
         # SAVE TO GOOGLE SHEETS
+        # ============================================
+
         add_product([
             product_id,
             product_name,
             price,
-            image_filename
+            image_url
         ])
 
         added_count += 1
@@ -187,66 +216,51 @@ if not products_df.empty:
 
         col1, col2, col3 = st.columns([1, 2, 1])
 
-        # =================================================
+        # =============================================
         # IMAGE
-        # =================================================
+        # =============================================
 
         with col1:
 
-            image_name = row.get("image", "")
+            image_url = row.get("image", "")
 
-            image_path = os.path.join(
-                PRODUCT_FOLDER,
-                str(image_name)
-            )
-
-            if os.path.exists(image_path):
+            if image_url:
 
                 st.image(
-                    image_path,
+                    image_url,
                     width=180
                 )
 
             else:
 
-                st.warning("Image missing")
+                st.warning("No image")
 
-        # =================================================
+        # =============================================
         # DETAILS
-        # =================================================
+        # =============================================
 
         with col2:
 
-            product_name_value = row.get(
-                "product_name",
-                "No Name"
-            )
-
-            product_id_value = row.get(
-                "product_id",
-                "N/A"
-            )
-
-            product_price_value = row.get(
-                "price",
-                0
-            )
-
             st.subheader(
-                str(product_name_value)
+                str(
+                    row.get(
+                        "product_name",
+                        "No Name"
+                    )
+                )
             )
 
             st.write(
-                f"Product ID: {product_id_value}"
+                f"Product ID: {row.get('product_id', 'N/A')}"
             )
 
             st.write(
-                f"Price: ₹{product_price_value}"
+                f"Price: ₹{row.get('price', 0)}"
             )
 
-        # =================================================
+        # =============================================
         # DELETE PRODUCT
-        # =================================================
+        # =============================================
 
         with col3:
 
@@ -300,9 +314,9 @@ if not orders_df.empty:
 
         customer_number = customer_number.split(".")[0]
 
-        # =================================================
+        # =============================================
         # BUILD MESSAGE
-        # =================================================
+        # =============================================
 
         lines = []
 
@@ -358,9 +372,9 @@ if not orders_df.empty:
 
         message = "\n".join(lines)
 
-        # =================================================
+        # =============================================
         # DISPLAY
-        # =================================================
+        # =============================================
 
         st.subheader(
             f"Order ID: {order_id}"
@@ -381,9 +395,9 @@ if not orders_df.empty:
 
         col1, col2 = st.columns(2)
 
-        # =================================================
+        # =============================================
         # SEND WHATSAPP
-        # =================================================
+        # =============================================
 
         with col1:
 
@@ -407,9 +421,9 @@ if not orders_df.empty:
 
                     st.error(result)
 
-        # =================================================
+        # =============================================
         # DELETE ORDER
-        # =================================================
+        # =============================================
 
         with col2:
 
