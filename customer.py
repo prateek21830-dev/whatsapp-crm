@@ -43,6 +43,59 @@ customer_number = st.text_input(
 )
 
 # =====================================================
+# PRODUCT SEARCH + FILTER
+# =====================================================
+
+st.markdown("---")
+
+st.header("🔍 Search Products")
+
+col1, col2 = st.columns(2)
+
+with col1:
+
+    search_product = st.text_input(
+        "Search Product Name"
+    )
+
+with col2:
+
+    max_price = st.number_input(
+        "Maximum Price",
+        min_value=0,
+        value=100000
+    )
+
+# =====================================================
+# APPLY FILTER
+# =====================================================
+
+filtered_df = products_df.copy()
+
+# Product Name Filter
+
+if search_product:
+
+    filtered_df = filtered_df[
+        filtered_df["product_name"]
+        .astype(str)
+        .str.contains(
+            search_product,
+            case=False,
+            na=False
+        )
+    ]
+
+# Price Filter
+
+filtered_df = filtered_df[
+    pd.to_numeric(
+        filtered_df["price"],
+        errors="coerce"
+    ).fillna(0) <= max_price
+]
+
+# =====================================================
 # PRODUCT CATALOG
 # =====================================================
 
@@ -52,9 +105,9 @@ st.header("📦 Products")
 
 cart = []
 
-if not products_df.empty:
+if not filtered_df.empty:
 
-    for idx, row in products_df.iterrows():
+    for idx, row in filtered_df.iterrows():
 
         st.markdown("---")
 
@@ -139,7 +192,7 @@ if not products_df.empty:
 
 else:
 
-    st.warning("No products available")
+    st.warning("No matching products found")
 
 # =====================================================
 # CART SUMMARY
