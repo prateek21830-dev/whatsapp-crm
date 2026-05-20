@@ -1,238 +1,269 @@
 import streamlit as st
 import pandas as pd
-import uuid
 
-from gsheets import (
-    get_products,
-    add_order
-)
-
-# =====================================================
+# =========================
 # PAGE CONFIG
-# =====================================================
+# =========================
 
 st.set_page_config(
-    page_title="Customer Dashboard",
+    page_title="Customer CRM",
     layout="wide"
 )
 
-# =====================================================
-# LOAD PRODUCTS
-# =====================================================
+st.title("📋 Customer Management")
 
-products_df = get_products()
+# =========================
+# LOAD DATA
+# =========================
 
-# =====================================================
-# TITLE
-# =====================================================
+@st.cache_data
+def load_data():
+    return pd.read_csv("customers.csv")
 
-st.title("🛍️ Customer Dashboard")
+customer_df = load_data()
 
-# =====================================================
-# CUSTOMER DETAILS
-# =====================================================
+# =========================
+# SAFETY CHECKS
+# =========================
 
-st.header("👤 Customer Details")
+required_columns = [
+    "Customer Name",
+    "Contact Number",
+    "Rating",
+    "Total Purchase",
+    "Last Purchase Days"
+]
 
-customer_name = st.text_input(
-    "Customer Name"
+for col in required_columns:
+    if col not in customer_df.columns:
+        customer_df[col] = ""
+
+# =========================
+# SEARCH + FILTER SECTION
+# =========================
+
+st.subheader("🔍 Search & Filter Customers")
+
+col1, col2, col3, col4 = st.columns(4)
+
+with col1:
+    search_name = st.text_input(
+        "Search Customer Name"
+    )
+
+with col2:
+    search_phone = st.text_input(
+        "Search Phone Number"
+    )
+
+with col3:
+    rating_filter = st.selectbox(
+        "Filter By Rating",
+        [
+            "All",
+            "⭐",
+            "⭐⭐",
+            "⭐⭐⭐",
+            "⭐⭐⭐⭐",
+            "⭐⭐⭐⭐⭐"
+        ]
+    )
+
+with col4:
+    inactive_filter = st.selectbox(
+        "Inactive Customers",
+        [
+            "All",
+            "30+ Days",
+            "60+ Days",
+            "90+ Days",
+            "180+ Days"
+        ]
+    )
+
+# =========================
+# APPLY FILTERS
+# =========================
+
+filtered_df = customer_df.copy()
+
+# Name Search
+if search_name:
+    filtered_df = filtered_df[
+        filtered_df["Customer Name"]
+        .astype(str)
+        .str.lower()
+        .str.contains(search_name.lower())
+    ]
+
+# Phone Search
+if search_phone:
+    filtered_df = filtered_df[
+        filtered_df["Contact Number"]
+        .astype(str)
+        .str.contains(search_phone)
+    ]
+
+# Rating Filter
+if rating_filter != "All":
+    filtered_df = filtered_df[
+        filtered_df["Rating"] == rating_filter
+    ]
+
+# Inactive Filter
+if inactive_filter != "All":
+
+    days = int(inactive_filter.replace("+ Days", ""))
+
+    filtered_df["Last Purchase Days"] = pd.to_numeric(
+        filtered_df["Last Purchase Days"],
+        errors="coerce"
+    )
+
+    filtered_df = filtered_df[
+        filtered_df["Last Purchase Days"] >= days
+    ]
+
+# =========================
+# SORT SECTION
+# =========================
+
+st.subheader("📊 Sorting")
+
+sort_option = st.selectbox(
+    "Sort Customers By",
+    [
+        "Highest Purchase",
+        "Lowest Purchase",
+        "Most Active",
+        "Most Inactive",
+        "A-Z",
+        "Z-A"
+    ]
 )
 
-customer_number = st.text_input(
-    "WhatsApp Number"
+# Numeric Conversion
+filtered_df["Total Purchase"] = pd.to_numeric(
+    filtered_df["Total Purchase"],
+    errors="coerce"
 )
 
-# =====================================================
-# PRODUCT CATALOG
-# =====================================================
+# Apply Sorting
+if sort_option == "Highest Purchase":
 
-st.markdown("---")
-
-st.header("📦 Products")
-
-cart = []
-
-if not products_df.empty:
-
-    for idx, row in products_df.iterrows():
-
-        st.markdown("---")
-
-        col1, col2 = st.columns([1, 2])
-
-        # =================================================
-        # IMAGE
-        # =================================================
-
-        with col1:
-
-            image_url = row.get("image", "")
-
-            if image_url:
-
-                st.image(
-                    image_url,
-                    width=220
-                )
-
-            else:
-
-                st.warning("No image available")
-
-        # =================================================
-        # DETAILS
-        # =================================================
-
-        with col2:
-
-            st.subheader(
-                str(
-                    row.get(
-                        "product_name",
-                        "No Name"
-                    )
-                )
-            )
-
-            st.write(
-                f"Product ID: {row.get('product_id', 'N/A')}"
-            )
-
-            st.write(
-                f"Price: ₹{row.get('price', 0)}"
-            )
-
-            qty = st.number_input(
-                f"Quantity - {row.get('product_id', idx)}",
-                min_value=0,
-                step=1,
-                key=f"qty_{idx}"
-            )
-
-            if qty > 0:
-
-                total = qty * float(
-                    row.get("price", 0)
-                )
-
-                cart.append({
-
-                    "product_id": row.get(
-                        "product_id",
-                        ""
-                    ),
-
-                    "product_name": row.get(
-                        "product_name",
-                        ""
-                    ),
-
-                    "price": row.get(
-                        "price",
-                        0
-                    ),
-
-                    "qty": qty,
-
-                    "total": total
-                })
-
-else:
-
-    st.warning("No products available")
-
-# =====================================================
-# CART SUMMARY
-# =====================================================
-
-st.markdown("---")
-
-st.header("🛒 Cart Summary")
-
-if len(cart) > 0:
-
-    cart_df = pd.DataFrame(cart)
-
-    st.dataframe(
-        cart_df,
-        use_container_width=True
+    filtered_df = filtered_df.sort_values(
+        by="Total Purchase",
+        ascending=False
     )
 
-    grand_total = cart_df["total"].sum()
+elif sort_option == "Lowest Purchase":
 
-    st.subheader(
-        f"Grand Total: ₹{grand_total}"
+    filtered_df = filtered_df.sort_values(
+        by="Total Purchase",
+        ascending=True
     )
 
-else:
+elif sort_option == "Most Active":
 
-    st.info("Cart is empty")
-
-# =====================================================
-# PLACE ORDER
-# =====================================================
-
-st.markdown("---")
-
-if st.button("✅ Place Order"):
-
-    if customer_name == "":
-
-        st.warning(
-            "Enter customer name"
-        )
-
-        st.stop()
-
-    if customer_number == "":
-
-        st.warning(
-            "Enter WhatsApp number"
-        )
-
-        st.stop()
-
-    if len(cart) == 0:
-
-        st.warning(
-            "Select at least one product"
-        )
-
-        st.stop()
-
-    # =================================================
-    # CREATE ORDER ID
-    # =================================================
-
-    order_id = f"O{str(uuid.uuid4())[:6]}"
-
-    # =================================================
-    # SAVE ORDER
-    # =================================================
-
-    for item in cart:
-
-        add_order([
-
-            order_id,
-
-            customer_name,
-
-            customer_number,
-
-            item["product_id"],
-
-            item["product_name"],
-
-            item["price"],
-
-            item["qty"],
-
-            item["total"]
-        ])
-
-    st.success(
-        f"✅ Order placed successfully. Order ID: {order_id}"
+    filtered_df = filtered_df.sort_values(
+        by="Last Purchase Days",
+        ascending=True
     )
 
-    st.balloons()
+elif sort_option == "Most Inactive":
+
+    filtered_df = filtered_df.sort_values(
+        by="Last Purchase Days",
+        ascending=False
+    )
+
+elif sort_option == "A-Z":
+
+    filtered_df = filtered_df.sort_values(
+        by="Customer Name",
+        ascending=True
+    )
+
+elif sort_option == "Z-A":
+
+    filtered_df = filtered_df.sort_values(
+        by="Customer Name",
+        ascending=False
+    )
+
+# =========================
+# SUMMARY CARDS
+# =========================
+
+st.subheader("📈 CRM Summary")
+
+c1, c2, c3, c4 = st.columns(4)
+
+with c1:
+    st.metric(
+        "Total Customers",
+        len(filtered_df)
+    )
+
+with c2:
+    st.metric(
+        "Total Sales",
+        f"₹ {filtered_df['Total Purchase'].sum():,.0f}"
+    )
+
+with c3:
+    inactive_90 = len(
+        filtered_df[
+            filtered_df["Last Purchase Days"] >= 90
+        ]
+    )
+
+    st.metric(
+        "90+ Days Inactive",
+        inactive_90
+    )
+
+with c4:
+    vip = len(
+        filtered_df[
+            filtered_df["Rating"] == "⭐⭐⭐⭐⭐"
+        ]
+    )
+
+    st.metric(
+        "VIP Customers",
+        vip
+    )
+
+# =========================
+# DOWNLOAD OPTION
+# =========================
+
+csv = filtered_df.to_csv(index=False).encode("utf-8")
+
+st.download_button(
+    label="⬇ Download Filtered Customers",
+    data=csv,
+    file_name="filtered_customers.csv",
+    mime="text/csv"
+)
+
+# =========================
+# CUSTOMER TABLE
+# =========================
+
+st.subheader("📋 Customer List")
+
+st.dataframe(
+    filtered_df,
+    use_container_width=True,
+    height=650
+)
+
+# =========================
+# FOOTER
+# =========================
+
+st.success(
+    f"Showing {len(filtered_df)} customers"
+)
