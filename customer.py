@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import os
 
 st.set_page_config(page_title="Customers", layout="wide")
 
@@ -10,7 +11,16 @@ st.title("👥 Customer Dashboard")
 # =========================
 @st.cache_data
 def load_data():
-    return pd.read_csv("customers.csv")
+
+    if os.path.exists("customers.csv"):
+        return pd.read_csv("customers.csv")
+
+    # Empty dataframe if file not found
+    return pd.DataFrame(columns=[
+        "Customer Name",
+        "Contact Number",
+        "Total Purchase"
+    ])
 
 customer_df = load_data()
 
@@ -58,7 +68,10 @@ if search_mobile:
 # Purchase filter
 if "Total Purchase" in filtered_df.columns:
     filtered_df = filtered_df[
-        filtered_df["Total Purchase"] >= min_purchase
+        pd.to_numeric(
+            filtered_df["Total Purchase"],
+            errors="coerce"
+        ).fillna(0) >= min_purchase
     ]
 
 # =========================
@@ -74,3 +87,12 @@ st.dataframe(
     use_container_width=True,
     height=600
 )
+
+# =========================
+# FILE NOT FOUND MESSAGE
+# =========================
+if customer_df.empty:
+    st.warning(
+        "customers.csv file not found. "
+        "Upload the file in GitHub repo."
+    )
